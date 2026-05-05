@@ -604,6 +604,37 @@
 
   <!-- DASHBOARD -->
   <div id="panel-dashboard" class="panel active">
+
+    <div class="section" style="margin-bottom:16px;">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span>账户余额</span>
+        <button class="btn btn-outline btn-sm" onclick="refreshAllBalances()" style="font-size:11px;padding:4px 10px;">🔄 刷新</button>
+      </div>
+      <div class="cards" style="margin-bottom:0;">
+        <div class="card claude">
+          <div class="card-label">Claude 余额</div>
+          <div class="card-value" id="bal-claude" style="font-size:20px;">--</div>
+          <div class="card-sub" id="bal-claude-sub">未配置 API Key</div>
+          <div style="margin-top:8px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;">
+            <div id="bal-claude-bar" style="height:100%;width:0%;background:var(--claude);border-radius:2px;transition:width 0.8s;"></div>
+          </div>
+        </div>
+        <div class="card openai">
+          <div class="card-label">OpenAI 余额</div>
+          <div class="card-value" id="bal-openai" style="font-size:20px;color:var(--openai);">--</div>
+          <div class="card-sub" id="bal-openai-sub">未配置 API Key</div>
+          <div style="margin-top:8px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;">
+            <div id="bal-openai-bar" style="height:100%;width:0%;background:var(--openai);border-radius:2px;transition:width 0.8s;"></div>
+          </div>
+        </div>
+        <div class="card gemini">
+          <div class="card-label">Gemini</div>
+          <div class="card-value" id="bal-gemini" style="font-size:20px;color:var(--gemini);">免费</div>
+          <div class="card-sub" id="bal-gemini-sub">按用量计费，无预付余额</div>
+        </div>
+      </div>
+    </div>
+
     <div class="section">
       <div class="section-title">费用分布</div>
       <div class="chart-bars" id="costBars">
@@ -1026,6 +1057,7 @@ function saveKeys() {
   };
   localStorage.setItem('token-keys', JSON.stringify(keys));
   showToast('✓ 密钥已保存到本地', 'success');
+  refreshAllBalances();
 }
 
 function loadKeys() {
@@ -1173,9 +1205,87 @@ function showToast(msg, type = 'success') {
   setTimeout(() => t.remove(), 3000);
 }
 
+// ---- Balance Query ----
+async function refreshAllBalances() {
+  const k = JSON.parse(localStorage.getItem('token-keys') || '{}');
+  if (k.claude) fetchClaudeBalance(k.claude);
+  if (k.openai) fetchOpenAIBalance(k.openai);
+}
+
+async function fetchClaudeBalance(key) {
+  const balEl = document.getElementById('bal-claude');
+  const subEl = document.getElementById('bal-claude-sub');
+  const barEl = document.getElementById('bal-claude-bar');
+  balEl.innerHTML = '<span class="loading"></span>';
+  subEl.textContent = '查询中...';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/organizations/billing', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const credits = data.available_credits || data.credit_balance || 0;
+      const total = data.total_credits || data.purchased_credits || credits;
+      balEl.textContent = '$' + parseFloat(credits).toFixed(2);
+      subEl.textContent = `已用 $${(total - credits).toFixed(2)} / 共 $${parseFloat(total).toFixed(2)}`;
+      const pct = total > 0 ? Math.min(100, (credits / total) * 100) : 0;
+      barEl.style.width = pct + '%';
+      barEl.style.background = pct < 20 ? 'var(--danger)' : 'var(--claude)';
+      if (pct < 20) showToast('⚠️ Claude 余额不足 20%', 'error');
+      return;
+    }
+    // Try alternative endpoint
+    const res2 = await fetch('https://api.anthropic.com/v1/usage', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+    });
+    if (res2.ok) {
+      balEl.textContent = '已连接';
+      subEl.textContent = '前往 console.anthropic.com 查看余额';
+      barEl.style.width = '100%';
+    } else {
+      balEl.textContent = '⚠️';
+      subEl.textContent = 'Key 无效或无权限';
+    }
+  } catch(e) {
+    balEl.textContent = '⚠️';
+    subEl.textContent = '查询失败（CORS限制）— 前往 console.anthropic.com';
+  }
+}
+
+async function fetchOpenAIBalance(key) {
+  const balEl = document.getElementById('bal-openai');
+  const subEl = document.getElementById('bal-openai-sub');
+  const barEl = document.getElementById('bal-openai-bar');
+  balEl.innerHTML = '<span class="loading"></span>';
+  subEl.textContent = '查询中...';
+  try {
+    const res = await fetch('https://api.openai.com/dashboard/billing/credit_grants', {
+      headers: { 'Authorization': 'Bearer ' + key }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const remaining = data.total_available || 0;
+      const granted = data.total_granted || remaining;
+      balEl.textContent = '$' + parseFloat(remaining).toFixed(2);
+      subEl.textContent = `已用 $${(granted - remaining).toFixed(2)} / 共 $${parseFloat(granted).toFixed(2)}`;
+      const pct = granted > 0 ? Math.min(100, (remaining / granted) * 100) : 0;
+      barEl.style.width = pct + '%';
+      barEl.style.background = pct < 20 ? 'var(--danger)' : 'var(--openai)';
+      if (pct < 20) showToast('⚠️ OpenAI 余额不足 20%', 'error');
+    } else {
+      balEl.textContent = '⚠️';
+      subEl.textContent = '前往 platform.openai.com/usage 查看';
+    }
+  } catch(e) {
+    balEl.textContent = '⚠️';
+    subEl.textContent = '查询失败（CORS限制）';
+  }
+}
+
 // ---- Init ----
 updateDashboard();
 loadKeys();
+refreshAllBalances();
 
 // ---- PWA Service Worker ----
 if ('serviceWorker' in navigator) {

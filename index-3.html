@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Token Tracker">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6b6b88;
+    --claude: #d97706;
+    --openai: #10b981;
+    --gemini: #3b82f6;
+    --accent: #a78bfa;
+    --danger: #ef4444;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Sora', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(167,139,250,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(167,139,250,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 40px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo h1 {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    display: block;
+    margin-top: 1px;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 32px;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .tab.active {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Summary cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .card.claude::before { background: var(--claude); }
+  .card.openai::before { background: var(--openai); }
+  .card.gemini::before { background: var(--gemini); }
+
+  .card-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-size: 28px;
+    font-family: var(--mono);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .card.claude .card-value { color: var(--claude); }
+  .card.openai .card-value { color: var(--openai); }
+  .card.gemini .card-value { color: var(--gemini); }
+
+  .card-sub { font-size: 12px; color: var(--muted); }
+
+  /* Section */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Key config */
+  .key-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: 700px) { .key-grid { grid-template-columns: 1fr; } }
+
+  .key-item label {
+    display: block;
+    font-size: 12px;
+    font-family: var(--mono);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  .badge.claude { background: var(--claude); }
+  .badge.openai { background: var(--openai); }
+  .badge.gemini { background: var(--gemini); }
+
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+  }
+
+  input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="password"]:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #0a0a0f;
+  }
+
+  .btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+  /* Log table */
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .log-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .log-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: rgba(167,139,250,0.04); }
+
+  .platform-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .platform-tag.claude { background: rgba(217,119,6,0.15); color: var(--claude); }
+  .platform-tag.openai { background: rgba(16,185,129,0.15); color: var(--openai); }
+  .platform-tag.gemini { background: rgba(59,130,246,0.15); color: var(--gemini); }
+
+  /* Estimator */
+  .est-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: start;
+  }
+
+  textarea {
+    min-height: 140px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  .est-results {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  @media (max-width: 600px) { .est-results { grid-template-columns: 1fr; } }
+
+  .est-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .est-card-title {
+    font-size: 11px;
+    font-family: var(--mono);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .est-row-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-family: var(--mono);
+    padding: 3px 0;
+    color: var(--muted);
+  }
+
+  .est-row-item span:last-child { color: var(--text); }
+
+  /* Log form */
+  .log-form {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+  }
+
+  @media (max-width: 700px) {
+    .log-form { grid-template-columns: 1fr 1fr; }
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Chart bar */
+  .chart-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 80px;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+
+  .bar-label { color: var(--muted); }
+
+  .bar-track {
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .bar-fill.claude { background: var(--claude); }
+  .bar-fill.openai { background: var(--openai); }
+  .bar-fill.gemini { background: var(--gemini); }
+
+  .bar-val { text-align: right; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 13px;
+    font-family: var(--mono);
+    z-index: 1000;
+    animation: slideUp 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .toast.success { border-color: var(--openai); color: var(--openai); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+  /* API query result */
+  .api-result {
+    margin-top: 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    display: none;
+  }
+
+  .api-result.show { display: block; }
+
+  .api-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+  }
+
+  .api-row:last-child { border-bottom: none; }
+  .api-key-col { color: var(--muted); }
+  .api-val-col { color: var(--text); }
+
+  .loading {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  .del-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+
+  .total-row {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    margin-top: 16px;
+  }
+
+  .total-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .total-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⬡</div>
+      <div>
+        <h1>TOKEN TRACKER</h1>
+        <span>Claude · OpenAI · Gemini</span>
+      </div>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;">
+      <div id="clock"></div>
+      <div>Bangkok · GMT+7</div>
+      <div id="syncStatus" style="margin-top:4px;cursor:pointer;" onclick="ghLoad()">☁️ GitHub 同步</div>
+    </div>
+  </header>
+
+  <!-- Summary cards -->
+  <div class="cards" id="summaryCards">
+    <div class="card claude">
+      <div class="card-label">Claude</div>
+      <div class="card-value" id="sum-claude">$0.00</div>
+      <div class="card-sub" id="sub-claude">0 tokens logged</div>
+    </div>
+    <div class="card openai">
+      <div class="card-label">ChatGPT / OpenAI</div>
+      <div class="card-value" id="sum-openai">$0.00</div>
+      <div class="card-sub" id="sub-openai">0 tokens logged</div>
+    </div>
+    <div class="card gemini">
+      <div class="card-label">Gemini</div>
+      <div class="card-value" id="sum-gemini">$0.00</div>
+      <div class="card-sub" id="sub-gemini">0 tokens logged</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dashboard')">📊 仪表盘</button>
+    <button class="tab" onclick="switchTab('estimator')">🔢 估算 Token</button>
+    <button class="tab" onclick="switchTab('log')">📝 记录日志</button>
+    <button class="tab" onclick="switchTab('keys')">🔑 API 配置</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="panel-dashboard" class="panel active">
+
+    <div class="section" style="margin-bottom:16px;">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span>账户余额</span>
+        <button class="btn btn-outline btn-sm" onclick="refreshAllBalances()" style="font-size:11px;padding:4px 10px;">🔄 刷新</button>
+      </div>
+      <div class="cards" style="margin-bottom:0;">
+        <div class="card claude">
+          <div class="card-label">Claude 余额</div>
+          <div class="card-value" id="bal-claude" style="font-size:20px;">--</div>
+          <div class="card-sub" id="bal-claude-sub">未配置 API Key</div>
+          <div style="margin-top:8px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;">
+            <div id="bal-claude-bar" style="height:100%;width:0%;background:var(--claude);border-radius:2px;transition:width 0.8s;"></div>
+          </div>
+        </div>
+        <div class="card openai">
+          <div class="card-label">OpenAI 余额</div>
+          <div class="card-value" id="bal-openai" style="font-size:20px;color:var(--openai);">--</div>
+          <div class="card-sub" id="bal-openai-sub">未配置 API Key</div>
+          <div style="margin-top:8px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;">
+            <div id="bal-openai-bar" style="height:100%;width:0%;background:var(--openai);border-radius:2px;transition:width 0.8s;"></div>
+          </div>
+        </div>
+        <div class="card gemini">
+          <div class="card-label">Gemini</div>
+          <div class="card-value" id="bal-gemini" style="font-size:20px;color:var(--gemini);">免费</div>
+          <div class="card-sub" id="bal-gemini-sub">按用量计费，无预付余额</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">费用分布</div>
+      <div class="chart-bars" id="costBars">
+        <div class="bar-row">
+          <div class="bar-label"><span class="badge claude"></span> Claude</div>
+          <div class="bar-track"><div class="bar-fill claude" id="bar-claude" style="width:0%"></div></div>
+          <div class="bar-val" id="barval-claude">$0.00</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="badge openai"></span> OpenAI</div>
+          <div class="bar-track"><div class="bar-fill openai" id="bar-openai" style="width:0%"></div></div>
+          <div class="bar-val" id="barval-openai">$0.00</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="badge gemini"></span> Gemini</div>
+          <div class="bar-track"><div class="bar-fill gemini" id="bar-gemini" style="width:0%"></div></div>
+          <div class="bar-val" id="barval-gemini">$0.00</div>
+        </div>
+      </div>
+      <div class="total-row">
+        <div class="total-label">总计支出</div>
+        <div class="total-value" id="grandTotal">$0.00</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">最近记录</div>
+      <div id="recentLog">
+        <div class="empty"><div class="empty-icon">📭</div>暂无记录，前往「记录日志」添加</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESTIMATOR -->
+  <div id="panel-estimator" class="panel">
+    <div class="section">
+      <div class="section-title">文本 Token 估算</div>
+      <textarea id="estimatorText" placeholder="粘贴你的 prompt 或对话内容，实时估算各平台 token 消耗和费用..." oninput="estimateTokens()"></textarea>
+      
+      <div style="display:flex;gap:12px;margin-top:12px;align-items:center;">
+        <select id="estModel" onchange="estimateTokens()" style="width:auto;min-width:200px;">
+          <optgroup label="Claude">
+            <option value="claude-opus-4-5">Claude Opus 4.5 ($15/$75)</option>
+            <option value="claude-sonnet-4-5" selected>Claude Sonnet 4.5 ($3/$15)</option>
+            <option value="claude-haiku-4-5">Claude Haiku 4.5 ($0.25/$1.25)</option>
+          </optgroup>
+          <optgroup label="OpenAI">
+            <option value="gpt-4o">GPT-4o ($5/$15)</option>
+            <option value="gpt-4o-mini">GPT-4o-mini ($0.15/$0.6)</option>
+            <option value="gpt-4-turbo">GPT-4 Turbo ($10/$30)</option>
+          </optgroup>
+          <optgroup label="Gemini">
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro ($1.25/$10)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash ($0.10/$0.40)</option>
+          </optgroup>
+        </select>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);">价格单位：$/百万 token (输入/输出)</div>
+      </div>
+
+      <div class="est-results" id="estResults" style="display:none;">
+        <div class="est-card">
+          <div class="est-card-title"><span class="badge claude"></span> Token 统计</div>
+          <div class="est-row-item"><span>字符数</span><span id="est-chars">0</span></div>
+          <div class="est-row-item"><span>中文字数</span><span id="est-cn">0</span></div>
+          <div class="est-row-item"><span>估算 Tokens</span><span id="est-tokens">0</span></div>
+        </div>
+        <div class="est-card">
+          <div class="est-card-title" style="color:var(--accent)">⬡ 当前模型费用</div>
+          <div class="est-row-item"><span>输入费用</span><span id="est-cost-in">$0.00</span></div>
+          <div class="est-row-item"><span>预估输出(×2)</span><span id="est-cost-out">$0.00</span></div>
+          <div class="est-row-item" style="margin-top:4px;padding-top:6px;border-top:1px solid var(--border)"><span>单次总计</span><span id="est-cost-total" style="color:var(--accent);font-weight:700">$0.00</span></div>
+        </div>
+        <div class="est-card">
+          <div class="est-card-title">📋 添加到日志</div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:10px;">将当前估算结果记录到日志</div>
+          <button class="btn btn-primary btn-sm" onclick="addEstimateToLog()" style="width:100%">+ 添加记录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="panel-log" class="panel">
+    <div class="section">
+      <div class="section-title">添加记录</div>
+      <div class="log-form">
+        <div class="form-group">
+          <label>平台</label>
+          <select id="log-platform">
+            <option value="claude">Claude</option>
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>模型</label>
+          <input type="text" id="log-model" placeholder="sonnet-4-5" value="claude-sonnet-4-5">
+        </div>
+        <div class="form-group">
+          <label>输入 Tokens</label>
+          <input type="number" id="log-in" placeholder="1000" min="0">
+        </div>
+        <div class="form-group">
+          <label>输出 Tokens</label>
+          <input type="number" id="log-out" placeholder="500" min="0">
+        </div>
+        <div>
+          <button class="btn btn-primary" onclick="addLogEntry()" style="white-space:nowrap">+ 添加</button>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div class="form-group">
+          <label style="font-size:11px;font-family:var(--mono);color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">备注 (可选)</label>
+          <input type="text" id="log-note" placeholder="例：LALIDA 产品描述生成">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">所有记录 <span id="logCount" style="color:var(--muted);font-size:11px;">(0条)</span></div>
+      <div id="logTableWrap">
+        <div class="empty"><div class="empty-icon">📭</div>暂无记录</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KEYS -->
+  <div id="panel-keys" class="panel">
+    <div class="section">
+      <div class="section-title">API Key 配置</div>
+      <div class="key-grid">
+        <div class="key-item">
+          <label><span class="badge claude"></span> Anthropic (Claude)</label>
+          <input type="password" id="key-claude" placeholder="sk-ant-...">
+        </div>
+        <div class="key-item">
+          <label><span class="badge openai"></span> OpenAI</label>
+          <input type="password" id="key-openai" placeholder="sk-...">
+        </div>
+        <div class="key-item">
+          <label><span class="badge gemini"></span> Google (Gemini)</label>
+          <input type="password" id="key-gemini" placeholder="AIza...">
+        </div>
+      </div>
+      <div class="key-grid" style="margin-top:12px;grid-template-columns:1fr;">
+        <div class="key-item">
+          <label>☁️ GitHub Token（用于跨设备同步）</label>
+          <input type="password" id="key-github" placeholder="ghp_...">
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="saveKeys()">💾 保存密钥</button>
+        <button class="btn btn-outline" onclick="testKeys()">🔍 测试连接</button>
+        <button class="btn btn-outline" onclick="clearKeys()" style="color:var(--danger);border-color:var(--danger);">🗑 清除密钥</button>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:8px;font-size:12px;font-family:var(--mono);color:var(--muted);">
+        🔒 密钥仅存储在本地 localStorage，不上传任何服务器
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">查询 API 用量</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="btn btn-outline btn-sm" onclick="queryUsage('claude')"><span class="badge claude" style="margin-right:6px"></span>查询 Claude 用量</button>
+        <button class="btn btn-outline btn-sm" onclick="queryUsage('openai')"><span class="badge openai" style="margin-right:6px"></span>查询 OpenAI 用量</button>
+        <button class="btn btn-outline btn-sm" onclick="queryUsage('gemini')"><span class="badge gemini" style="margin-right:6px"></span>查询 Gemini 用量</button>
+      </div>
+      <div id="apiResult" class="api-result">
+        <div id="apiResultContent"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- GitHub Sync Config ----
+const GH_OWNER = 'leileiyangg';
+const GH_REPO = 'token-tracker';
+const GH_FILE = 'data.json';
+const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+function getGHToken() { return localStorage.getItem('gh-token') || ''; }
+
+let ghFileSha = null;
+let syncStatus = 'idle'; // idle | syncing | ok | error
+
+async function ghLoad() {
+  const GH_TOKEN = getGHToken();
+  if (!GH_TOKEN) { setSyncStatus('idle'); return; }
+  try {
+    setSyncStatus('syncing');
+    const res = await fetch(GH_API, {
+      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (res.status === 404) { setSyncStatus('ok'); return; }
+    if (!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    ghFileSha = json.sha;
+    const content = JSON.parse(atob(json.content.replace(/\n/g, '')));
+    if (content.logs) logs = content.logs;
+    setSyncStatus('ok');
+    updateDashboard();
+    renderLogTable();
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('GitHub load error:', e);
+  }
+}
+
+async function ghSave() {
+  const GH_TOKEN = getGHToken();
+  if (!GH_TOKEN) return;
+  try {
+    setSyncStatus('syncing');
+    const data = { logs, updatedAt: new Date().toISOString() };
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    const body = { message: `sync: ${new Date().toLocaleString('zh-CN')}`, content };
+    if (ghFileSha) body.sha = ghFileSha;
+    const res = await fetch(GH_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    ghFileSha = json.content.sha;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('GitHub save error:', e);
+  }
+}
+
+function setSyncStatus(s) {
+  syncStatus = s;
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = { syncing: '🔄 同步中...', ok: '☁️ 已同步', error: '⚠️ 同步失败', idle: '☁️ GitHub 同步' };
+  el.textContent = map[s] || s;
+  el.style.color = s === 'error' ? 'var(--danger)' : s === 'ok' ? 'var(--openai)' : 'var(--muted)';
+}
+
+// ---- State ----
+const PRICING = {
+  'claude-opus-4-5':   { in: 15,    out: 75    },
+  'claude-sonnet-4-5': { in: 3,     out: 15    },
+  'claude-haiku-4-5':  { in: 0.25,  out: 1.25  },
+  'gpt-4o':            { in: 5,     out: 15    },
+  'gpt-4o-mini':       { in: 0.15,  out: 0.6   },
+  'gpt-4-turbo':       { in: 10,    out: 30    },
+  'gemini-2.5-pro':    { in: 1.25,  out: 10    },
+  'gemini-2.0-flash':  { in: 0.10,  out: 0.40  },
+};
+
+const PLATFORM_MAP = {
+  'claude-opus-4-5': 'claude', 'claude-sonnet-4-5': 'claude', 'claude-haiku-4-5': 'claude',
+  'gpt-4o': 'openai', 'gpt-4o-mini': 'openai', 'gpt-4-turbo': 'openai',
+  'gemini-2.5-pro': 'gemini', 'gemini-2.0-flash': 'gemini',
+};
+
+let logs = JSON.parse(localStorage.getItem('token-logs') || '[]');
+let keys = JSON.parse(localStorage.getItem('token-keys') || '{}');
+
+// ---- Clock ----
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ---- Tabs ----
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'dashboard') updateDashboard();
+  if (name === 'log') renderLogTable();
+  if (name === 'keys') loadKeys();
+}
+
+// ---- Token estimation ----
+function estimateTokens() {
+  const text = document.getElementById('estimatorText').value;
+  const modelKey = document.getElementById('estModel').value;
+  const results = document.getElementById('estResults');
+
+  if (!text.trim()) { results.style.display = 'none'; return; }
+  results.style.display = 'grid';
+
+  const chars = text.length;
+  const cnMatch = text.match(/[\u4e00-\u9fff]/g);
+  const cnCount = cnMatch ? cnMatch.length : 0;
+  const enChars = chars - cnCount;
+  const tokens = Math.ceil(cnCount * 1.3 + enChars / 4);
+
+  const price = PRICING[modelKey] || { in: 3, out: 15 };
+  const costIn = (tokens / 1e6) * price.in;
+  const costOut = (tokens * 2 / 1e6) * price.out;
+  const costTotal = costIn + costOut;
+
+  document.getElementById('est-chars').textContent = chars.toLocaleString();
+  document.getElementById('est-cn').textContent = cnCount.toLocaleString();
+  document.getElementById('est-tokens').textContent = tokens.toLocaleString();
+  document.getElementById('est-cost-in').textContent = '$' + costIn.toFixed(4);
+  document.getElementById('est-cost-out').textContent = '$' + costOut.toFixed(4);
+  document.getElementById('est-cost-total').textContent = '$' + costTotal.toFixed(4);
+}
+
+function addEstimateToLog() {
+  const text = document.getElementById('estimatorText').value;
+  if (!text.trim()) return;
+  const modelKey = document.getElementById('estModel').value;
+  const price = PRICING[modelKey] || { in: 3, out: 15 };
+  const chars = text.length;
+  const cnMatch = text.match(/[\u4e00-\u9fff]/g);
+  const cnCount = cnMatch ? cnMatch.length : 0;
+  const enChars = chars - cnCount;
+  const tokens = Math.ceil(cnCount * 1.3 + enChars / 4);
+  const outTokens = tokens * 2;
+  const platform = PLATFORM_MAP[modelKey] || 'claude';
+  const costIn = (tokens / 1e6) * price.in;
+  const costOut = (outTokens / 1e6) * price.out;
+
+  const entry = {
+    id: Date.now(),
+    ts: new Date().toISOString(),
+    platform,
+    model: modelKey,
+    inTokens: tokens,
+    outTokens,
+    costIn,
+    costOut,
+    note: '来自估算工具',
+  };
+  logs.unshift(entry);
+  saveLogs();
+  updateDashboard();
+  showToast('✓ 已添加到日志', 'success');
+}
+
+// ---- Log ----
+function getPlatformPrice(platform, model) {
+  if (PRICING[model]) return PRICING[model];
+  const defaults = { claude: {in:3,out:15}, openai: {in:5,out:15}, gemini: {in:1.25,out:10} };
+  return defaults[platform] || {in:3,out:15};
+}
+
+function addLogEntry() {
+  const platform = document.getElementById('log-platform').value;
+  const model = document.getElementById('log-model').value.trim() || platform;
+  const inTok = parseInt(document.getElementById('log-in').value) || 0;
+  const outTok = parseInt(document.getElementById('log-out').value) || 0;
+  const note = document.getElementById('log-note').value.trim();
+
+  const price = getPlatformPrice(platform, model);
+  const costIn = (inTok / 1e6) * price.in;
+  const costOut = (outTok / 1e6) * price.out;
+
+  const entry = {
+    id: Date.now(),
+    ts: new Date().toISOString(),
+    platform, model, inTokens: inTok, outTokens: outTok, costIn, costOut, note
+  };
+
+  logs.unshift(entry);
+  saveLogs();
+  renderLogTable();
+  updateSummaryCards();
+  updateDashboard();
+
+  document.getElementById('log-in').value = '';
+  document.getElementById('log-out').value = '';
+  document.getElementById('log-note').value = '';
+  showToast('✓ 记录已添加', 'success');
+}
+
+function deleteLog(id) {
+  logs = logs.filter(l => l.id !== id);
+  saveLogs();
+  renderLogTable();
+  updateSummaryCards();
+  updateDashboard();
+}
+
+function saveLogs() {
+  localStorage.setItem('token-logs', JSON.stringify(logs));
+  ghSave();
+}
+
+function renderLogTable() {
+  const wrap = document.getElementById('logTableWrap');
+  document.getElementById('logCount').textContent = `(${logs.length}条)`;
+
+  if (logs.length === 0) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>暂无记录</div>';
+    return;
+  }
+
+  let html = `<table class="log-table">
+    <thead><tr>
+      <th>时间</th><th>平台</th><th>模型</th><th>输入 Tokens</th><th>输出 Tokens</th><th>费用</th><th>备注</th><th></th>
+    </tr></thead><tbody>`;
+
+  logs.slice(0, 100).forEach(l => {
+    const total = ((l.costIn || 0) + (l.costOut || 0));
+    const dt = new Date(l.ts).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    html += `<tr>
+      <td style="color:var(--muted)">${dt}</td>
+      <td><span class="platform-tag ${l.platform}">${l.platform}</span></td>
+      <td>${l.model}</td>
+      <td>${(l.inTokens||0).toLocaleString()}</td>
+      <td>${(l.outTokens||0).toLocaleString()}</td>
+      <td style="color:var(--accent)">$${total.toFixed(4)}</td>
+      <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.note||'—'}</td>
+      <td><button class="del-btn" onclick="deleteLog(${l.id})">✕</button></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ---- Dashboard ----
+function updateDashboard() {
+  updateSummaryCards();
+  updateBars();
+  renderRecentLog();
+}
+
+function getSummary() {
+  const s = { claude: {cost:0,tokens:0}, openai: {cost:0,tokens:0}, gemini: {cost:0,tokens:0} };
+  logs.forEach(l => {
+    const p = l.platform;
+    if (s[p]) {
+      s[p].cost += (l.costIn||0) + (l.costOut||0);
+      s[p].tokens += (l.inTokens||0) + (l.outTokens||0);
+    }
+  });
+  return s;
+}
+
+function updateSummaryCards() {
+  const s = getSummary();
+  ['claude','openai','gemini'].forEach(p => {
+    document.getElementById('sum-'+p).textContent = '$'+s[p].cost.toFixed(4);
+    document.getElementById('sub-'+p).textContent = s[p].tokens.toLocaleString()+' tokens logged';
+  });
+}
+
+function updateBars() {
+  const s = getSummary();
+  const total = s.claude.cost + s.openai.cost + s.gemini.cost;
+  document.getElementById('grandTotal').textContent = '$' + total.toFixed(4);
+  ['claude','openai','gemini'].forEach(p => {
+    const pct = total > 0 ? (s[p].cost / total * 100) : 0;
+    document.getElementById('bar-'+p).style.width = pct + '%';
+    document.getElementById('barval-'+p).textContent = '$' + s[p].cost.toFixed(4);
+  });
+}
+
+function renderRecentLog() {
+  const wrap = document.getElementById('recentLog');
+  if (logs.length === 0) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>暂无记录，前往「记录日志」添加</div>';
+    return;
+  }
+  let html = `<table class="log-table">
+    <thead><tr><th>时间</th><th>平台</th><th>模型</th><th>Tokens</th><th>费用</th><th>备注</th></tr></thead><tbody>`;
+  logs.slice(0, 8).forEach(l => {
+    const total = ((l.costIn||0)+(l.costOut||0));
+    const dt = new Date(l.ts).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    html += `<tr>
+      <td style="color:var(--muted)">${dt}</td>
+      <td><span class="platform-tag ${l.platform}">${l.platform}</span></td>
+      <td>${l.model}</td>
+      <td>${((l.inTokens||0)+(l.outTokens||0)).toLocaleString()}</td>
+      <td style="color:var(--accent)">$${total.toFixed(4)}</td>
+      <td style="color:var(--muted)">${l.note||'—'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ---- Keys ----
+function saveKeys() {
+  keys = {
+    claude: document.getElementById('key-claude').value.trim(),
+    openai: document.getElementById('key-openai').value.trim(),
+    gemini: document.getElementById('key-gemini').value.trim(),
+  };
+  localStorage.setItem('token-keys', JSON.stringify(keys));
+  const ghToken = document.getElementById('key-github').value.trim();
+  if (ghToken) localStorage.setItem('gh-token', ghToken);
+  showToast('✓ 密钥已保存到本地', 'success');
+  refreshAllBalances();
+  ghLoad();
+}
+
+function loadKeys() {
+  const k = JSON.parse(localStorage.getItem('token-keys') || '{}');
+  if (k.claude) document.getElementById('key-claude').value = k.claude;
+  if (k.openai) document.getElementById('key-openai').value = k.openai;
+  if (k.gemini) document.getElementById('key-gemini').value = k.gemini;
+  const ghToken = localStorage.getItem('gh-token') || '';
+  if (ghToken) document.getElementById('key-github').value = ghToken;
+}
+
+function clearKeys() {
+  localStorage.removeItem('token-keys');
+  localStorage.removeItem('gh-token');
+  ['claude','openai','gemini','github'].forEach(p => { document.getElementById('key-'+p).value = ''; });
+  showToast('密钥已清除', 'error');
+}
+
+async function testKeys() {
+  const k = {
+    claude: document.getElementById('key-claude').value.trim(),
+    openai: document.getElementById('key-openai').value.trim(),
+    gemini: document.getElementById('key-gemini').value.trim(),
+  };
+  showToast('正在测试连接...', 'success');
+  // Note: actual API test would require backend due to CORS
+  setTimeout(() => {
+    let msg = [];
+    if (k.claude) msg.push('Claude ✓');
+    if (k.openai) msg.push('OpenAI ✓');
+    if (k.gemini) msg.push('Gemini ✓');
+    if (!msg.length) { showToast('请先输入 API Key', 'error'); return; }
+    showToast(msg.join(' · ') + ' — 密钥已保存（跨域限制，需后端验证真实连通性）', 'success');
+  }, 800);
+}
+
+async function queryUsage(platform) {
+  const k = JSON.parse(localStorage.getItem('token-keys') || '{}');
+  const key = k[platform];
+  const resultDiv = document.getElementById('apiResult');
+  const contentDiv = document.getElementById('apiResultContent');
+
+  if (!key) {
+    showToast('请先在上方填写 ' + platform + ' 的 API Key', 'error');
+    return;
+  }
+
+  resultDiv.classList.add('show');
+  contentDiv.innerHTML = `<span class="loading"></span>正在查询 ${platform} 用量数据...`;
+
+  // Anthropic usage API
+  if (platform === 'claude') {
+    try {
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      const todayStr = today.toISOString().split('T')[0];
+
+      const res = await fetch(`https://api.anthropic.com/v1/usage?start_time=${monthStart}&end_time=${todayStr}`, {
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        contentDiv.innerHTML = `<div style="color:var(--danger)">查询失败：${err.error?.message || res.statusText}</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:8px;">提示：claude.ai 订阅用户无法通过 API 查询用量，需使用 Anthropic Console 账号（API Key 形式）</div>`;
+        return;
+      }
+
+      const data = await res.json();
+      let html = `<div class="api-row"><span class="api-key-col">平台</span><span class="api-val-col" style="color:var(--claude)">Claude (Anthropic)</span></div>`;
+      if (data.data) {
+        let totalIn = 0, totalOut = 0, totalCost = 0;
+        data.data.forEach(d => {
+          totalIn += d.input_tokens || 0;
+          totalOut += d.output_tokens || 0;
+          totalCost += d.cost_usd || 0;
+        });
+        html += `<div class="api-row"><span class="api-key-col">本月输入 Tokens</span><span class="api-val-col">${totalIn.toLocaleString()}</span></div>`;
+        html += `<div class="api-row"><span class="api-key-col">本月输出 Tokens</span><span class="api-val-col">${totalOut.toLocaleString()}</span></div>`;
+        html += `<div class="api-row"><span class="api-key-col">本月费用</span><span class="api-val-col" style="color:var(--claude)">$${totalCost.toFixed(4)}</span></div>`;
+        html += `<div class="api-row"><span class="api-key-col">查询范围</span><span class="api-val-col">${monthStart} ~ ${todayStr}</span></div>`;
+      } else {
+        html += `<div class="api-row"><span class="api-key-col">响应</span><span class="api-val-col">${JSON.stringify(data).slice(0,200)}</span></div>`;
+      }
+      contentDiv.innerHTML = html;
+
+    } catch(e) {
+      contentDiv.innerHTML = `<div style="color:var(--danger)">请求失败：${e.message}</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:8px;">浏览器跨域（CORS）限制可能导致请求失败。建议直接前往 <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a> 查看用量</div>`;
+    }
+    return;
+  }
+
+  // OpenAI usage
+  if (platform === 'openai') {
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0].replace(/-/g,'');
+      const res = await fetch(`https://api.openai.com/v1/usage?date=${dateStr}`, {
+        headers: { 'Authorization': 'Bearer ' + key }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        contentDiv.innerHTML = `<div style="color:var(--danger)">查询失败：${err.error?.message || res.statusText}</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:8px;">建议前往 <a href="https://platform.openai.com/usage" target="_blank" style="color:var(--accent)">platform.openai.com/usage</a> 查看</div>`;
+        return;
+      }
+      const data = await res.json();
+      let totalReqs = 0, totalCtx = 0, totalGen = 0;
+      (data.data || []).forEach(d => {
+        totalReqs += d.n_requests || 0;
+        totalCtx += d.n_context_tokens_total || 0;
+        totalGen += d.n_generated_tokens_total || 0;
+      });
+      contentDiv.innerHTML = `
+        <div class="api-row"><span class="api-key-col">平台</span><span class="api-val-col" style="color:var(--openai)">OpenAI</span></div>
+        <div class="api-row"><span class="api-key-col">今日请求数</span><span class="api-val-col">${totalReqs.toLocaleString()}</span></div>
+        <div class="api-row"><span class="api-key-col">今日上下文 Tokens</span><span class="api-val-col">${totalCtx.toLocaleString()}</span></div>
+        <div class="api-row"><span class="api-key-col">今日生成 Tokens</span><span class="api-val-col">${totalGen.toLocaleString()}</span></div>
+        <div class="api-row"><span class="api-key-col">日期</span><span class="api-val-col">${today.toLocaleDateString('zh-CN')}</span></div>`;
+    } catch(e) {
+      contentDiv.innerHTML = `<div style="color:var(--danger)">请求失败（可能存在跨域限制）</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:8px;">建议前往 <a href="https://platform.openai.com/usage" target="_blank" style="color:var(--accent)">platform.openai.com/usage</a></div>`;
+    }
+    return;
+  }
+
+  // Gemini - no public usage API
+  if (platform === 'gemini') {
+    contentDiv.innerHTML = `
+      <div class="api-row"><span class="api-key-col">平台</span><span class="api-val-col" style="color:var(--gemini)">Google Gemini</span></div>
+      <div class="api-row"><span class="api-key-col">说明</span><span class="api-val-col">Gemini 暂无公开的用量查询 API</span></div>
+      <div style="color:var(--muted);font-size:11px;margin-top:10px;">建议前往 <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" style="color:var(--accent)">Google Cloud Console</a> 查看 API 用量统计</div>`;
+  }
+}
+
+// ---- Toast ----
+function showToast(msg, type = 'success') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ---- Balance Query ----
+async function refreshAllBalances() {
+  const k = JSON.parse(localStorage.getItem('token-keys') || '{}');
+  if (k.claude) fetchClaudeBalance(k.claude);
+  if (k.openai) fetchOpenAIBalance(k.openai);
+}
+
+async function fetchClaudeBalance(key) {
+  const balEl = document.getElementById('bal-claude');
+  const subEl = document.getElementById('bal-claude-sub');
+  const barEl = document.getElementById('bal-claude-bar');
+  balEl.innerHTML = '<span class="loading"></span>';
+  subEl.textContent = '查询中...';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/organizations/billing', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const credits = data.available_credits || data.credit_balance || 0;
+      const total = data.total_credits || data.purchased_credits || credits;
+      balEl.textContent = '$' + parseFloat(credits).toFixed(2);
+      subEl.textContent = `已用 $${(total - credits).toFixed(2)} / 共 $${parseFloat(total).toFixed(2)}`;
+      const pct = total > 0 ? Math.min(100, (credits / total) * 100) : 0;
+      barEl.style.width = pct + '%';
+      barEl.style.background = pct < 20 ? 'var(--danger)' : 'var(--claude)';
+      if (pct < 20) showToast('⚠️ Claude 余额不足 20%', 'error');
+      return;
+    }
+    // Try alternative endpoint
+    const res2 = await fetch('https://api.anthropic.com/v1/usage', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+    });
+    if (res2.ok) {
+      balEl.textContent = '已连接';
+      subEl.textContent = '前往 console.anthropic.com 查看余额';
+      barEl.style.width = '100%';
+    } else {
+      balEl.textContent = '⚠️';
+      subEl.textContent = 'Key 无效或无权限';
+    }
+  } catch(e) {
+    balEl.textContent = '⚠️';
+    subEl.textContent = '查询失败（CORS限制）— 前往 console.anthropic.com';
+  }
+}
+
+async function fetchOpenAIBalance(key) {
+  const balEl = document.getElementById('bal-openai');
+  const subEl = document.getElementById('bal-openai-sub');
+  const barEl = document.getElementById('bal-openai-bar');
+  balEl.innerHTML = '<span class="loading"></span>';
+  subEl.textContent = '查询中...';
+  try {
+    const res = await fetch('https://api.openai.com/dashboard/billing/credit_grants', {
+      headers: { 'Authorization': 'Bearer ' + key }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const remaining = data.total_available || 0;
+      const granted = data.total_granted || remaining;
+      balEl.textContent = '$' + parseFloat(remaining).toFixed(2);
+      subEl.textContent = `已用 $${(granted - remaining).toFixed(2)} / 共 $${parseFloat(granted).toFixed(2)}`;
+      const pct = granted > 0 ? Math.min(100, (remaining / granted) * 100) : 0;
+      barEl.style.width = pct + '%';
+      barEl.style.background = pct < 20 ? 'var(--danger)' : 'var(--openai)';
+      if (pct < 20) showToast('⚠️ OpenAI 余额不足 20%', 'error');
+    } else {
+      balEl.textContent = '⚠️';
+      subEl.textContent = '前往 platform.openai.com/usage 查看';
+    }
+  } catch(e) {
+    balEl.textContent = '⚠️';
+    subEl.textContent = '查询失败（CORS限制）';
+  }
+}
+
+// ---- Init ----
+updateDashboard();
+loadKeys();
+refreshAllBalances();
+ghLoad(); // 从 GitHub 加载最新数据
+
+// ---- PWA Service Worker ----
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

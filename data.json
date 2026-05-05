@@ -1,0 +1,60 @@
+{
+  "logs": [
+    {
+      "id": 628565413,
+      "ts": "2026-05-05T09:43:45.981905+00:00",
+      "platform": "claude",
+      "model": "claude-sonnet-4-6",
+      "inTokens": 859171,
+      "outTokens": 10756,
+      "costIn": 0.46092075,
+      "costOut": 0.16134,
+      "note": "20260505_155925_7725a5"
+    },
+    {
+      "id": 924451117,
+      "ts": "2026-05-05T09:40:38.705363+00:00",
+      "platform": "claude",
+      "model": "claude-sonnet-4-6",
+      "inTokens": 554,
+      "outTokens": 1166,
+      "costIn": 0.001662,
+      "costOut": 0.01749,
+      "note": "20260505_164037_1a012d"
+    },
+    {
+      "id": 1146851543,
+      "ts": "2026-05-05T08:58:20.279586+00:00",
+      "platform": "claude",
+      "model": "claude-sonnet-4-6",
+      "inTokens": 89370,
+      "outTokens": 1061,
+      "costIn": 0.15447885,
+      "costOut": 0.015915,
+      "note": "Hermes AI助手功能介绍"
+    },
+    {
+      "id": 158680797,
+      "ts": "2026-05-05T08:45:10.755459+00:00",
+      "platform": "claude",
+      "model": "claude-sonnet-4-6",
+      "inTokens": 5800,
+      "outTokens": 3676,
+      "costIn": 0.01245615,
+      "costOut": 0.05514,
+      "note": "20260505_154509_7546dd"
+    },
+    {
+      "id": 963621884,
+      "ts": "2026-05-05T08:49:23.014605+00:00",
+      "platform": "claude",
+      "model": "claude-sonnet-4-6",
+      "inTokens": 36891,
+      "outTokens": 589,
+      "costIn": 0.0815064,
+      "costOut": 0.008835,
+      "note": "20260505_154439_6fb3fc"
+    }
+  ],
+  "updatedAt": "2026-05-05T09:48:09.229271+00:00"
+}

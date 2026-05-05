@@ -572,6 +572,7 @@
     <div style="font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;">
       <div id="clock"></div>
       <div>Bangkok · GMT+7</div>
+      <div id="syncStatus" style="margin-top:4px;cursor:pointer;" onclick="ghLoad()">☁️ GitHub 同步</div>
     </div>
   </header>
 
@@ -779,6 +780,12 @@
           <input type="password" id="key-gemini" placeholder="AIza...">
         </div>
       </div>
+      <div class="key-grid" style="margin-top:12px;grid-template-columns:1fr;">
+        <div class="key-item">
+          <label>☁️ GitHub Token（用于跨设备同步）</label>
+          <input type="password" id="key-github" placeholder="ghp_...">
+        </div>
+      </div>
       <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
         <button class="btn btn-primary" onclick="saveKeys()">💾 保存密钥</button>
         <button class="btn btn-outline" onclick="testKeys()">🔍 测试连接</button>
@@ -805,6 +812,76 @@
 </div>
 
 <script>
+// ---- GitHub Sync Config ----
+const GH_OWNER = 'leileiyangg';
+const GH_REPO = 'token-tracker';
+const GH_FILE = 'data.json';
+const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+function getGHToken() { return localStorage.getItem('gh-token') || ''; }
+
+let ghFileSha = null;
+let syncStatus = 'idle'; // idle | syncing | ok | error
+
+async function ghLoad() {
+  const GH_TOKEN = getGHToken();
+  if (!GH_TOKEN) { setSyncStatus('idle'); return; }
+  try {
+    setSyncStatus('syncing');
+    const res = await fetch(GH_API, {
+      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (res.status === 404) { setSyncStatus('ok'); return; }
+    if (!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    ghFileSha = json.sha;
+    const content = JSON.parse(atob(json.content.replace(/\n/g, '')));
+    if (content.logs) logs = content.logs;
+    setSyncStatus('ok');
+    updateDashboard();
+    renderLogTable();
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('GitHub load error:', e);
+  }
+}
+
+async function ghSave() {
+  const GH_TOKEN = getGHToken();
+  if (!GH_TOKEN) return;
+  try {
+    setSyncStatus('syncing');
+    const data = { logs, updatedAt: new Date().toISOString() };
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    const body = { message: `sync: ${new Date().toLocaleString('zh-CN')}`, content };
+    if (ghFileSha) body.sha = ghFileSha;
+    const res = await fetch(GH_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    ghFileSha = json.content.sha;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('GitHub save error:', e);
+  }
+}
+
+function setSyncStatus(s) {
+  syncStatus = s;
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = { syncing: '🔄 同步中...', ok: '☁️ 已同步', error: '⚠️ 同步失败', idle: '☁️ GitHub 同步' };
+  el.textContent = map[s] || s;
+  el.style.color = s === 'error' ? 'var(--danger)' : s === 'ok' ? 'var(--openai)' : 'var(--muted)';
+}
+
 // ---- State ----
 const PRICING = {
   'claude-opus-4-5':   { in: 15,    out: 75    },
@@ -951,6 +1028,7 @@ function deleteLog(id) {
 
 function saveLogs() {
   localStorage.setItem('token-logs', JSON.stringify(logs));
+  ghSave();
 }
 
 function renderLogTable() {
@@ -1056,8 +1134,11 @@ function saveKeys() {
     gemini: document.getElementById('key-gemini').value.trim(),
   };
   localStorage.setItem('token-keys', JSON.stringify(keys));
+  const ghToken = document.getElementById('key-github').value.trim();
+  if (ghToken) localStorage.setItem('gh-token', ghToken);
   showToast('✓ 密钥已保存到本地', 'success');
   refreshAllBalances();
+  ghLoad();
 }
 
 function loadKeys() {
@@ -1065,11 +1146,14 @@ function loadKeys() {
   if (k.claude) document.getElementById('key-claude').value = k.claude;
   if (k.openai) document.getElementById('key-openai').value = k.openai;
   if (k.gemini) document.getElementById('key-gemini').value = k.gemini;
+  const ghToken = localStorage.getItem('gh-token') || '';
+  if (ghToken) document.getElementById('key-github').value = ghToken;
 }
 
 function clearKeys() {
   localStorage.removeItem('token-keys');
-  ['claude','openai','gemini'].forEach(p => { document.getElementById('key-'+p).value = ''; });
+  localStorage.removeItem('gh-token');
+  ['claude','openai','gemini','github'].forEach(p => { document.getElementById('key-'+p).value = ''; });
   showToast('密钥已清除', 'error');
 }
 
@@ -1286,6 +1370,7 @@ async function fetchOpenAIBalance(key) {
 updateDashboard();
 loadKeys();
 refreshAllBalances();
+ghLoad(); // 从 GitHub 加载最新数据
 
 // ---- PWA Service Worker ----
 if ('serviceWorker' in navigator) {
